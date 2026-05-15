@@ -14,6 +14,6 @@ public class MinecraftServerMixin {
     /**
      * On world save, the .json file will be saved.
      * */
-    @Inject(at = @At("HEAD"), method = "save")
+    @Inject(at = @At("HEAD"), method = "saveAllChunks")
     private void saveMixin(boolean suppressLogs, boolean flush, boolean force, CallbackInfoReturnable<Boolean> cir) {SignUtils.writeToggleSigns(noPrintPlayers);}
 }

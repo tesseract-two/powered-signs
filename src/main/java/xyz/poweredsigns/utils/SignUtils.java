@@ -4,20 +4,20 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.entity.HangingSignBlockEntity;
-import net.minecraft.block.entity.SignBlockEntity;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.particle.DustParticleEffect;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.state.property.Properties;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.world.World;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.particles.DustParticleOptions;
+import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.HangingSignBlockEntity;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.AABB;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.poweredsigns.config.ModConfig;
@@ -55,17 +55,17 @@ public class SignUtils {
      * @param world World to referenced
      * @return A boolean value of if the block is powered
      * */
-    public static boolean isBlockPowered(World world, BlockPos pos, SignBlockEntity blockEntity) {
+    public static boolean isBlockPowered(Level world, BlockPos pos, SignBlockEntity blockEntity) {
         if(ModConfig.getInstance().dontPrintWaxedSigns && blockEntity.isWaxed()) {return false;}
 
-        boolean transparentBlock = world.getBlockState(pos).isTransparent();
+        boolean transparentBlock = world.getBlockState(pos).propagatesSkylightDown();
         if (!ModConfig.getInstance().strongPowerOnly) {
             // Both Strong and Weak power
-            if (!transparentBlock) {return world.getReceivedRedstonePower(pos) > 0;}
+            if (!transparentBlock) {return world.getBestNeighborSignal(pos) > 0;}
             else {return false;}
         } else {
             // Only Strong power
-            if (!transparentBlock) {return world.getReceivedStrongRedstonePower(pos) > 0;}
+            if (!transparentBlock) {return world.getDirectSignalTo(pos) > 0;}
             else {return false;}
         }
     }
@@ -77,7 +77,7 @@ public class SignUtils {
      * @param pos The position of the sign.
      * @param blockEntity The internal data of the sign.
      * @param state The block state of the sign.
-     * @return Returns a {@link net.minecraft.util.math.BlockPos} that is offset by the wanted amount.
+     * @return Returns a {@link net.minecraft.core.BlockPos} that is offset by the wanted amount.
      */
     public static BlockPos positionOffset(BlockPos pos, BlockState state, SignBlockEntity blockEntity) {
         if (ModConfig.getInstance().legacyPoweringSystem) {return new BlockPos((pos.getX()), (pos.getY() - 1), (pos.getZ()));}
@@ -102,13 +102,13 @@ public class SignUtils {
 
     /**
      * A public method used by {@link SignEntityMixin} to print to the chat.
-     * Calls {@link #innerPrint(SignBlockEntity, PlayerEntity)} repeatedly.
+     * Calls {@link #innerPrint(SignBlockEntity, Player)} repeatedly.
      *
      * @param world The current World.
      * @param pos The position of the sign. Can be offset.
      * @param blockEntity The internal data of the sign.
      */
-    public static void printToPlayers(World world, BlockPos pos, SignBlockEntity blockEntity) {
+    public static void printToPlayers(Level world, BlockPos pos, SignBlockEntity blockEntity) {
         int customBox = ModConfig.getInstance().playerDistance;
         Matcher matcher = SignRegex(blockEntity);
 
@@ -122,11 +122,11 @@ public class SignUtils {
             }
         }
 
-        List<PlayerEntity> players = world.getEntitiesByClass(PlayerEntity.class, new Box(pos).expand(customBox), player -> true);
-        for (PlayerEntity player : players) {
+        List<Player> players = world.getEntitiesOfClass(Player.class, new AABB(pos).inflate(customBox), player -> true);
+        for (Player player : players) {
             if (noPrintPlayers != null && !(noPrintPlayers.contains(player.getName().getString()))) {
                 switch (FabricLoader.getInstance().getEnvironmentType()) {
-                    case CLIENT -> {if (!(player instanceof ClientPlayerEntity)) {innerPrint(blockEntity, player);}}
+                    case CLIENT -> {if (!(player instanceof LocalPlayer)) {innerPrint(blockEntity, player);}}
                     case SERVER -> {innerPrint(blockEntity, player);}
                 }
             }
@@ -140,7 +140,7 @@ public class SignUtils {
      * @param blockEntity The sign in question
      * @param player A PlayerEntity to target
      */
-    private static void innerPrint(SignBlockEntity blockEntity, PlayerEntity player) {
+    private static void innerPrint(SignBlockEntity blockEntity, Player player) {
         for (int index = 0; index < 8; index++) {
             int lineIndex = index % 4; // 0 1 2 3 0 1 2 3
             String tempChatString = "";
@@ -148,7 +148,7 @@ public class SignUtils {
             boolean sideIndex;
             String boldText;
             sideIndex = index < 4;
-            if (blockEntity.getText(sideIndex).isGlowing()) {boldText = "§l";} else {boldText = "";} // This will conflict with the other formatting extension
+            if (blockEntity.getText(sideIndex).hasGlowingText()) {boldText = "§l";} else {boldText = "";} // This will conflict with the other formatting extension
             RegexCheck = !SignRegex(blockEntity).matches() || index != 0;
 
             tempChatString = tempChatString + ColorFromString(blockEntity.getText(sideIndex).getColor().toString()).getValue();
@@ -157,7 +157,7 @@ public class SignUtils {
             tempChatString = tempChatString + ColorFromString("RESET").getValue();
 
             if (!(blockEntity.getText(sideIndex).getMessage(lineIndex, false).getString().isEmpty()) && RegexCheck) {
-                player.sendMessage(Text.literal(tempChatString), false);
+                player.displayClientMessage(Component.literal(tempChatString), false);
             }
         }
     }
@@ -169,10 +169,10 @@ public class SignUtils {
      * @param pos Position of the sign to be acted upon
      * @param world World to referenced
      * */
-    public static void aesthetics(World world, BlockPos pos) {
+    public static void aesthetics(Level world, BlockPos pos) {
         if (ModConfig.getInstance().particles) { // Client Exclusive
-            world.addParticleClient(
-                    new DustParticleEffect(DustParticleEffect.RED, 1),
+            world.addParticle(
+                    new DustParticleOptions(DustParticleOptions.REDSTONE_PARTICLE_COLOR, 1),
                     pos.getX() + 0.5,
                     pos.getY() + 0.75,
                     pos.getZ() + 0.5,
@@ -185,8 +185,8 @@ public class SignUtils {
             world.playSound(
                     null,
                     pos,
-                    SoundEvents.BLOCK_LEVER_CLICK,
-                    SoundCategory.BLOCKS,
+                    SoundEvents.LEVER_CLICK,
+                    SoundSource.BLOCKS,
                     0.5f,
                     1f
             );
@@ -200,7 +200,7 @@ public class SignUtils {
      * */
     public static Direction getSignFacing(BlockState state) {
         try {
-            return state.get(Properties.HORIZONTAL_FACING);
+            return state.getValue(BlockStateProperties.HORIZONTAL_FACING);
         } catch (Exception ignored) {
             return null;
         }
