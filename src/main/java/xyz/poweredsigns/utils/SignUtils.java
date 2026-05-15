@@ -157,7 +157,7 @@ public class SignUtils {
             tempChatString = tempChatString + ColorFromString("RESET").getValue();
 
             if (!(blockEntity.getText(sideIndex).getMessage(lineIndex, false).getString().isEmpty()) && RegexCheck) {
-                player.displayClientMessage(Component.literal(tempChatString), false);
+                player.sendSystemMessage(Component.literal(tempChatString));
             }
         }
     }
