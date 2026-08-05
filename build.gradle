@@ -13,6 +13,7 @@ base {
 repositories {
 	// Cloth Config
 	maven { url "https://maven.shedaniel.me/" }
+	maven { url "https://maven.terraformersmc.com/releases/" }
 
 	// Mod Menu
 	maven { url "https://maven.terraformersmc.com/" }
@@ -25,10 +26,10 @@ loom {
 }
 
 configurations {
-	modIncludeImplementation
+	includeImplementation
 
-	include.extendsFrom modIncludeImplementation
-	modImplementation.extendsFrom modIncludeImplementation
+	include.extendsFrom includeImplementation
+	implementation.extendsFrom includeImplementation
 }
 
 dependencies {
